@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>반도체 대장주 비교 대시보드</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- PapaParse -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
+        body { font-family: 'Pretendard', sans-serif; background-color: #f8fafc; }
+        .glass-card { background: white; border-radius: 16px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05); border: 1px solid #e2e8f0; }
+        
+        /* 브랜드 컬러 설정 */
+        .text-samsung { color: #034ea2; } /* 삼성 블루 */
+        .bg-samsung-light { background-color: #eff6ff; }
+        .text-sk { color: #E82B2B; } /* SK 레드 */
+        .bg-sk-light { background-color: #fef2f2; }
+        
+        /* 상승/하락 텍스트 컬러 (한국식) */
+        .text-up { color: #ef4444; }
+        .text-down { color: #3b82f6; }
+        
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    </style>
+</head>
+<body class="text-slate-800 p-4 md:p-8">
+
+    <div class="max-w-[1400px] mx-auto">
+        <!-- 헤더 및 필터 -->
+        <header class="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 pb-6">
+            <div>
+                <div class="flex items-center gap-3 mb-1">
+                    <div class="w-10 h-10 bg-slate-800 rounded-xl flex items-center justify-center text-white shadow-md">
+                        <i data-lucide="cpu" class="w-6 h-6"></i>
+                    </div>
+                    <h1 class="text-3xl font-extrabold text-slate-900 tracking-tight">반도체 대장주 비교 대시보드</h1>
+                </div>
+                <p class="text-sm text-slate-500 ml-13 flex items-center gap-1.5 mt-2">
+                    <i data-lucide="info" class="w-4 h-4"></i> 삼성전자 vs SK하이닉스 실시간 구글 파이낸스 데이터
+                </p>
+            </div>
+            
+            <div class="flex items-center gap-4">
+                <div id="loadingIndicator" class="flex items-center gap-2 text-blue-600 font-semibold bg-blue-50 px-4 py-2 rounded-full">
+                    <i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>
+                    데이터 분석 중...
+                </div>
+                
+                <!-- 종목 선택 필터 -->
+                <div id="filterContainer" class="hidden items-center gap-2 bg-white p-2 rounded-xl border border-slate-200 shadow-sm">
+                    <label for="stockSelect" class="text-sm font-semibold text-slate-600 flex items-center gap-1 pl-2">
+                        <i data-lucide="filter" class="w-4 h-4 text-slate-400"></i> 종목
+                    </label>
+                    <select id="stockSelect" class="border-none bg-slate-50 rounded-lg px-3 py-1.5 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-slate-200 outline-none cursor-pointer min-w-[140px]">
+                        <option value="ALL">전체 비교 (V/S)</option>
+                        <option value="SAMSUNG">삼성전자</option>
+                        <option value="SK">SK하이닉스</option>
+                    </select>
+                </div>
+            </div>
+        </header>
+
+        <!-- 메인 콘텐츠 영역 (숨김 처리 후 로딩 완료 시 표시) -->
+        <div id="dashboardContent" class="hidden space-y-8">
+            
+            <!-- 1. 요약 카드 섹션 (동적 렌더링) -->
+            <div id="summaryCardsContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+                <!-- JS에서 카드 삽입 -->
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <!-- 2. 복합 라인 차트 영역 (좌측 2칸) -->
+                <div class="glass-card p-6 lg:col-span-2">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-lg font-bold flex items-center gap-2 text-slate-800">
+                            <i data-lucide="line-chart" class="w-5 h-5 text-slate-500"></i>
+                            기간별 주가 추이 비교
+                        </h2>
+                        <span class="text-xs text-slate-400">범례 클릭 시 해당 종목 On/Off</span>
+                    </div>
+                    <div class="relative h-[350px] w-full">
+                        <canvas id="compareChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- 3. 기간별 수익률 테이블 (우측 1칸) -->
+                <div class="glass-card p-0 flex flex-col h-full">
+                    <div class="p-6 pb-4 border-b border-slate-100 flex justify-between items-center bg-white rounded-t-2xl">
+                        <h2 class="text-lg font-bold flex items-center gap-2 text-slate-800">
+                            <i data-lucide="percent" class="w-5 h-5 text-slate-500"></i>
+                            기간별 수익률 비교
+                        </h2>
+                    </div>
+                    <div class="overflow-x-auto p-4">
+                        <table class="w-full text-sm text-center">
+                            <thead class="text-xs text-slate-500 bg-slate-50 rounded-lg">
+                                <tr>
+                                    <th class="px-4 py-3 font-semibold rounded-l-lg">기간</th>
+                                    <th class="px-4 py-3 font-bold text-samsung" id="th-samsung">삼성전자</th>
+                                    <th class="px-4 py-3 font-bold text-sk rounded-r-lg" id="th-sk">SK하이닉스</th>
+                                </tr>
+                            </thead>
+                            <tbody id="returnTableBody" class="divide-y divide-slate-100">
+                                <!-- JS 렌더링 -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="mt-auto p-4 bg-slate-50 rounded-b-2xl border-t border-slate-100 text-xs text-slate-500 text-center">
+                        현재가(가장 최근 종가) 기준 과거 특정 시점 대비 변동률
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        lucide.createIcons();
+
+        // 데이터 URL
+        const URL_SAMSUNG = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSUWLGZioezWEh7_m3hgWPm26KiiNxXSCxJDgFtcwj2ilfNhoMEuEwmXX0GW1IbSBCUJpgy9cjL6uIo/pub?gid=1164304683&single=true&output=csv';
+        const URL_SK = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSUWLGZioezWEh7_m3hgWPm26KiiNxXSCxJDgFtcwj2ilfNhoMEuEwmXX0GW1IbSBCUJpgy9cjL6uIo/pub?gid=245228205&single=true&output=csv';
+
+        // 통합 데이터 저장소
+        let timelineData = {}; // { 'YYYY-MM-DD': { samsung: 50000, sk: 120000 } }
+        let sortedDates = [];
+        let stats = {
+            samsung: { current: 0, max: 0, min: Infinity, dates: { max: '', min: '' } },
+            sk: { current: 0, max: 0, min: Infinity, dates: { max: '', min: '' } }
+        };
+        
+        let chartInstance = null;
+
+        function formatNumber(num) {
+            return num.toLocaleString('ko-KR');
+        }
+
+        // CSV 데이터를 파싱하여 Promise로 반환하는 래퍼 함수
+        function fetchCSV(url) {
+            return new Promise((resolve, reject) => {
+                Papa.parse(url, {
+                    download: true,
+                    header: true,
+                    skipEmptyLines: true,
+                    complete: results => resolve(results.data),
+                    error: err => reject(err)
+                });
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            try {
+                // 두 시트 데이터 동시 호출
+                const [samsungRaw, skRaw] = await Promise.all([
+                    fetchCSV(URL_SAMSUNG),
+                    fetchCSV(URL_SK)
+                ]);
+
+                processRawData(samsungRaw, 'samsung');
+                processRawData(skRaw, 'sk');
+                
+                calculateStats();
+
+                document.getElementById('loadingIndicator').style.display = 'none';
+                document.getElementById('filterContainer').style.display = 'flex';
+                document.getElementById('dashboardContent').classList.remove('hidden');
+
+                // 필터 이벤트 바인딩
+                document.getElementById('stockSelect').addEventListener('change', (e) => updateDashboard(e.target.value));
+
+                // 초기 대시보드 렌더링
+                updateDashboard('ALL');
+
+            } catch (error) {
+                console.error("데이터 로드 에러:", error);
+                document.getElementById('loadingIndicator').innerHTML = `<span class="text-red-500"><i data-lucide="alert-circle" class="w-4 h-4 inline"></i> 데이터 로드 실패</span>`;
+                lucide.createIcons();
+            }
+        });
+
+        // 원본 데이터를 YYYY-MM-DD 키 기반의 객체로 병합
+        function processRawData(data, stockKey) {
+            data.forEach(row => {
+                const dateRaw = row['Date'] || row['날짜'] || Object.values(row)[0];
+                const priceRaw = row['Close'] || row['종가'] || Object.values(row)[1];
+
+                if (!dateRaw || !priceRaw) return;
+
+                const price = parseFloat(priceRaw.toString().replace(/,/g, ''));
+                if (isNaN(price)) return;
+
+                // 날짜 정규식 추출
+                const dateMatch = dateRaw.match(/(\d{4})\.\s*(\d{1,2})\.\s*(\d{1,2})/);
+                let dateStr = dateRaw;
+                if (dateMatch) {
+                    dateStr = `${dateMatch[1]}-${dateMatch[2].padStart(2, '0')}-${dateMatch[3].padStart(2, '0')}`;
+                }
+
+                if (!timelineData[dateStr]) {
+                    timelineData[dateStr] = {};
+                }
+                timelineData[dateStr][stockKey] = price;
+            });
+        }
+
+        // 전체 데이터 기반 최고/최저/현재가 계산
+        function calculateStats() {
+            sortedDates = Object.keys(timelineData).sort();
+            
+            if (sortedDates.length === 0) return;
+
+            // 현재가는 가장 최근 데이터 기준
+            let lastSamsungPrice = 0, lastSkPrice = 0;
+
+            sortedDates.forEach(date => {
+                const dayData = timelineData[date];
+                
+                // 삼성전자 갱신
+                if (dayData.samsung) {
+                    lastSamsungPrice = dayData.samsung;
+                    if (dayData.samsung > stats.samsung.max) {
+                        stats.samsung.max = dayData.samsung;
+                        stats.samsung.dates.max = date;
+                    }
+                    if (dayData.samsung < stats.samsung.min) {
+                        stats.samsung.min = dayData.samsung;
+                        stats.samsung.dates.min = date;
+                    }
+                }
+                
+                // SK하이닉스 갱신
+                if (dayData.sk) {
+                    lastSkPrice = dayData.sk;
+                    if (dayData.sk > stats.sk.max) {
+                        stats.sk.max = dayData.sk;
+                        stats.sk.dates.max = date;
+                    }
+                    if (dayData.sk < stats.sk.min) {
+                        stats.sk.min = dayData.sk;
+                        stats.sk.dates.min = date;
+                    }
+                }
+            });
+
+            stats.samsung.current = lastSamsungPrice;
+            stats.sk.current = lastSkPrice;
+        }
+
+        // 대시보드 뷰 업데이트 (필터 변경 시)
+        function updateDashboard(viewMode) {
+            renderCards(viewMode);
+            renderChart(viewMode);
+            renderReturnsTable(viewMode);
+            lucide.createIcons();
+        }
+
+        // 1. 상단 요약 카드 렌더링
+        function renderCards(viewMode) {
+            const container = document.getElementById('summaryCardsContainer');
+            container.innerHTML = '';
+
+            const makeCard = (title, price, date, icon, colorClass, bgClass, label) => `
+                <div class="glass-card p-4 lg:col-span-1 border-l-4 ${colorClass.replace('text', 'border')}">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">${label}</span>
+                        <div class="p-1.5 ${bgClass} rounded-lg ${colorClass}"><i data-lucide="${icon}" class="w-4 h-4"></i></div>
+                    </div>
+                    <div class="text-xs font-semibold text-slate-400 mb-0.5">${title}</div>
+                    <div class="text-xl font-black text-slate-800">${formatNumber(price)}<span class="text-sm font-medium ml-0.5 text-slate-500">원</span></div>
+                    ${date ? `<div class="text-[10px] text-slate-400 mt-1">${date}</div>` : ''}
+                </div>
+            `;
+
+            // 삼성전자 카드 추가 (ALL 또는 SAMSUNG)
+            if (viewMode === 'ALL' || viewMode === 'SAMSUNG') {
+                container.innerHTML += makeCard('현재가', stats.samsung.current, '', 'activity', 'text-samsung', 'bg-samsung-light', '삼성전자');
+                container.innerHTML += makeCard('최고가', stats.samsung.max, stats.samsung.dates.max, 'arrow-up-circle', 'text-samsung', 'bg-samsung-light', '삼성전자');
+                container.innerHTML += makeCard('최저가', stats.samsung.min, stats.samsung.dates.min, 'arrow-down-circle', 'text-samsung', 'bg-samsung-light', '삼성전자');
+            }
+
+            // SK하이닉스 카드 추가 (ALL 또는 SK)
+            if (viewMode === 'ALL' || viewMode === 'SK') {
+                container.innerHTML += makeCard('현재가', stats.sk.current, '', 'activity', 'text-sk', 'bg-sk-light', 'SK하이닉스');
+                container.innerHTML += makeCard('최고가', stats.sk.max, stats.sk.dates.max, 'arrow-up-circle', 'text-sk', 'bg-sk-light', 'SK하이닉스');
+                container.innerHTML += makeCard('최저가', stats.sk.min, stats.sk.dates.min, 'arrow-down-circle', 'text-sk', 'bg-sk-light', 'SK하이닉스');
+            }
+        }
+
+        // 2. 복합 라인 차트 렌더링
+        function renderChart(viewMode) {
+            const ctx = document.getElementById('compareChart').getContext('2d');
+            
+            // 데이터셋 조립 (결측치는 이전 가격으로 채움)
+            const labels = [];
+            const dataSamsung = [];
+            const dataSk = [];
+            
+            let lastSs = null, lastSk = null;
+
+            sortedDates.forEach(date => {
+                labels.push(date.substring(5)); // MM-DD
+                
+                const valSs = timelineData[date].samsung;
+                const valSk = timelineData[date].sk;
+
+                if (valSs) lastSs = valSs;
+                if (valSk) lastSk = valSk;
+
+                dataSamsung.push(lastSs);
+                dataSk.push(lastSk);
+            });
+
+            const datasets = [];
+
+            if (viewMode === 'ALL' || viewMode === 'SAMSUNG') {
+                datasets.push({
+                    label: '삼성전자',
+                    data: dataSamsung,
+                    borderColor: '#034ea2', // 파랑
+                    backgroundColor: 'rgba(3, 78, 162, 0.1)',
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    pointHoverRadius: 5,
+                    tension: 0.1
+                });
+            }
+
+            if (viewMode === 'ALL' || viewMode === 'SK') {
+                datasets.push({
+                    label: 'SK하이닉스',
+                    data: dataSk,
+                    borderColor: '#E82B2B', // 빨강
+                    backgroundColor: 'rgba(232, 43, 43, 0.1)',
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    pointHoverRadius: 5,
+                    tension: 0.1
+                });
+            }
+
+            if (chartInstance) chartInstance.destroy();
+
+            chartInstance = new Chart(ctx, {
+                type: 'line',
+                data: { labels, datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { position: 'top', align: 'end', labels: { usePointStyle: true, boxWidth: 8 } },
+                        tooltip: {
+                            backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                            titleColor: '#1e293b',
+                            bodyColor: '#1e293b',
+                            borderColor: '#e2e8f0', borderWidth: 1, padding: 12,
+                            callbacks: {
+                                label: function(context) { return `${context.dataset.label}: ${formatNumber(context.parsed.y)} 원`; }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: { grid: { color: '#f1f5f9' }, ticks: { callback: v => formatNumber(v) } },
+                        x: { grid: { display: false }, ticks: { maxTicksLimit: 12 } }
+                    }
+                }
+            });
+        }
+
+        // 3. 기간별 수익률 계산 및 테이블 렌더링
+        function renderReturnsTable(viewMode) {
+            const tbody = document.getElementById('returnTableBody');
+            tbody.innerHTML = '';
+            
+            // 테이블 헤더 가시성 조정
+            document.getElementById('th-samsung').style.display = (viewMode === 'ALL' || viewMode === 'SAMSUNG') ? 'table-cell' : 'none';
+            document.getElementById('th-sk').style.display = (viewMode === 'ALL' || viewMode === 'SK') ? 'table-cell' : 'none';
+
+            if (sortedDates.length === 0) return;
+
+            const latestDate = sortedDates[sortedDates.length - 1];
+            const latestParsed = new Date(latestDate);
+
+            // X개월 전 날짜와 가장 가까운(이전) 날짜 인덱스를 찾는 함수
+            function findPastDateValue(monthsAgo) {
+                const target = new Date(latestParsed);
+                target.setMonth(target.getMonth() - monthsAgo);
+                const targetStr = target.toISOString().split('T')[0];
+
+                let pastSs = null, pastSk = null;
+                // 뒤에서부터 역방향 탐색하여 타겟 날짜보다 작거나 같은 최초의 날짜를 찾음
+                for (let i = sortedDates.length - 1; i >= 0; i--) {
+                    if (sortedDates[i] <= targetStr) {
+                        pastSs = timelineData[sortedDates[i]].samsung || stats.samsung.current; // 결측 시 최신가(안전장치)
+                        pastSk = timelineData[sortedDates[i]].sk || stats.sk.current;
+                        break;
+                    }
+                }
+                return { samsung: pastSs, sk: pastSk };
+            }
+
+            const periods = [
+                { label: '최근 1개월', months: 1 },
+                { label: '최근 3개월', months: 3 },
+                { label: '최근 6개월', months: 6 }
+            ];
+
+            const renderRate = (current, past) => {
+                if (!past) return `<span class="text-slate-400">-</span>`;
+                const rate = ((current - past) / past) * 100;
+                if (rate > 0) return `<span class="text-up font-bold bg-red-50 px-2 py-1 rounded">▲ ${rate.toFixed(2)}%</span>`;
+                if (rate < 0) return `<span class="text-down font-bold bg-blue-50 px-2 py-1 rounded">▼ ${Math.abs(rate).toFixed(2)}%</span>`;
+                return `<span class="text-slate-500 font-medium bg-slate-100 px-2 py-1 rounded">0.00%</span>`;
+            };
+
+            periods.forEach(p => {
+                const pastVals = findPastDateValue(p.months);
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-slate-50/50 transition-colors";
+                
+                let html = `<td class="px-4 py-4 font-medium text-slate-700">${p.label}</td>`;
+                
+                if (viewMode === 'ALL' || viewMode === 'SAMSUNG') {
+                    html += `<td class="px-4 py-4">${renderRate(stats.samsung.current, pastVals.samsung)}</td>`;
+                }
+                if (viewMode === 'ALL' || viewMode === 'SK') {
+                    html += `<td class="px-4 py-4">${renderRate(stats.sk.current, pastVals.sk)}</td>`;
+                }
+                
+                tr.innerHTML = html;
+                tbody.appendChild(tr);
+            });
+        }
+    </script>
+</body>
+</html>
